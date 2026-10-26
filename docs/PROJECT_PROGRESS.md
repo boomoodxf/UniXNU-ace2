@@ -68,3 +68,44 @@ FREE F8000000 + 312A000
 1. 先确认 XNU 现在停在 stage 12 之后还是仍在 `arm_vm_physmap_init` 附近。最直接的办法是重新启用 `zzz-liuqin-usb-debug.patch` 里 `liuqin_early_marker()` 的阶段色带（当前被 `return;` 关掉），或把 `liuqin_stage` 的最后一个值以文本/色块画到屏上；需要重编内核（CI）。
 2. 把 `UniXNU.efi` 的 payload 注入做成脚本/board.toml 选项，避免每次手动 `mcopy`。
 3. 若 stage 12 已过，继续按 Udon 的 `zzzzz-skip-physical-timer.patch`、`native-ufs-root` 和 trust cache 顺序推进。
+
+## 2026-10-26 阶段定位修正：不是 stage 12
+
+此前的 stage 12 结论来自旧内核/旧窗口。用当前内核 + 1GiB DarwinBoot 窗口重新做 PSCI 复位探针后，实际死点更早：
+
+### 已确认
+
+1. **start.s 的 post-MMU framebuffer 写入会 fault**。
+   - 橙色条（0xb8280000）是 MMU 打开后的第一次 framebuffer store；
+   - 在橙色条处放复位探针 → 自动重启（说明能到）；
+   - 在白色条处放复位探针 → 不重启；
+   - 把橙色条 `str` 和白色条 `str` NOP 掉后，白色条复位探针成功。
+   - 结论：V=P 表没有正确覆盖 post-MMU 的 0xb8xxxxxx framebuffer，store 触发 data abort。
+   - 这不是内核镜像/窗口本身的问题；后续可以用 pmap/console 的正式映射解决，早期诊断条应跳过。
+
+2. **PSCI SYSTEM_RESET 可用**。
+   - 在 `_start` 第一条指令放复位探针，约 3 秒后手机自动重启并回到 Android。
+   - 复位探针镜像可以自动回到 Android，后续测试不再需要每次按键（只有“探针未到达”的失败测试才需要手动重启）。
+
+3. **stage 1、stage 2 能到**（nofb 修复后）。
+   - stage 1 = `arm_init` 入口；
+   - stage 2 = `PE_init_platform` 之后。
+
+4. **stage 3 到不了**，但继续细分确认：
+   - `ml_parse_cpu_topology()` 返回后的复位探针 → 成功；
+   - `rtclock_early_init()` 返回后的复位探针 → 成功；
+   - `kernel_startup_bootstrap()` 返回后的复位探针 → 失败。
+   - 因此当前死点在 **`kernel_startup_bootstrap()` 内部**，不是 `arm_vm_init` / stage 12。
+
+### 重要修正
+
+- 之前“卡在 physmap/stage 12”是旧内核结论；当前内核 + 4.75GiB/1GiB 窗口下，还没有走到 `arm_vm_init`。
+- 之前检测 `adb devices` 的脚本把表头当成设备，导致“自动重启成功”出现过假阳性；后续必须按序列号 `8834a83f` 精确判断。
+- 1GiB 窗口测试同样能走到上述位置；4.75GiB 不是当前首要问题。
+
+### 下次继续
+
+1. 在 `kernel_startup_bootstrap()` 内部做 startup 函数级复位探针（`STARTUP()` 表/函数入口），定位具体子系统。
+2. 优先怀疑：GIC/timer、`clock_service_create`、`machine_startup` 之前的平台初始化，或 Apple 专用寄存器访问。
+3. 也可以直接参考 Udon 的 core pin / `zzzzzz-udon-boot-bringup.patch` 与 startup 相关补丁，减少逐个试错。
+4. 把 nofb 修复（橙色/白色条 store NOP）做成 device 仓库的正式内核补丁；诊断条改用 pmap 正式映射后再画。
