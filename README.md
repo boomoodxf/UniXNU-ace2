@@ -167,14 +167,17 @@ Recovery: long-press power. No partition is modified by `fastboot boot`.
 
 ## Next steps
 
-1. Use the upstream entry probe (`scripts/patch-xnu-entry-probe.py` in current
-   UniXNU main) with `entry_probe_reset_delay` to determine whether MMU setup
-   completes, or re-enable the kernel's stage bands.
-2. Automate `UniXNU.efi` injection in the device repo instead of doing it in a
-   shell post-step.
-3. After stage 12/MMU is confirmed, add the physical-timer skip, trust cache,
-   native UFS root and Data seed in that order.
-4. Consider migrating the device repo to UniXNU format 2 once early boot is
+1. The current kernel passes `arm_init` stage 1/2, `ml_parse_cpu_topology` and
+   `rtclock_early_init`, but hangs inside `kernel_startup_bootstrap` before
+   `arm_vm_init`. This is earlier than the old `stage 12` conclusion.
+2. Add startup-function-level PSCI reset probes inside
+   `kernel_startup_bootstrap` to find the exact subsystem, or compare its
+   startup list with the working Udon core.
+3. Keep the post-MMU framebuffer-bar stores skipped for bring-up; the V=P map
+   does not cover `0xb8xxxxxx` and the first store data-aborts.
+4. Automate `UniXNU.efi` injection in the device repo instead of a shell
+   post-step.
+5. Consider migrating the device repo to UniXNU format 2 once early boot is
    stable. There is no shared SM8475 SoC repo yet.
 
 See `docs/PROJECT_PROGRESS.md` for the full chronological log.
