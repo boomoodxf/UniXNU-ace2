@@ -109,3 +109,14 @@ FREE F8000000 + 312A000
 2. 优先怀疑：GIC/timer、`clock_service_create`、`machine_startup` 之前的平台初始化，或 Apple 专用寄存器访问。
 3. 也可以直接参考 Udon 的 core pin / `zzzzzz-udon-boot-bringup.patch` 与 startup 相关补丁，减少逐个试错。
 4. 把 nofb 修复（橙色/白色条 store NOP）做成 device 仓库的正式内核补丁；诊断条改用 pmap 正式映射后再画。
+
+## 2026-10-26 继续缩小：kernel_startup_bootstrap 内部
+
+- `kernel_startup_bootstrap()` 的 `qsort(startup_entries, ...)` **返回了**（在 qsort 后放复位探针能自动重启）。
+- 因此死点在 `kernel_startup_initialize_upto(STARTUP_SUB_LOCKS)` 里，即 849 个 startup entry（subsystem 1/2/3）中的某一个。
+- 这些 entry 只有 27 个不同函数，主要包括：
+  - subsystem 1：`kernel_startup_tunable_init`、`__smr_domain_init`、`panic_init`、`stack_init`、`parse_bsd_args`、`PE_init_kprintf_config` 等
+  - subsystem 2：`machine_timeout_init`、`ml_init_lock_timeout`
+  - subsystem 3：各类 lock 初始化、`compact_id_table_init`、`smr_cpu_init`、`workload_config_setup`
+- 下一步不再盲测函数入口，优先做 **panic 屏**或 startup entry 级二分：把某个 entry 的 `func` 指针指向复位 cave，按排序后的 index 二分。需要先复现 qsort 的排序结果（同一 subsystem/rank 均为 0，顺序由 qsort 决定）。
+- 另一条更快的路：直接对照 Udon 的 startup 补丁/内核配置，或把它的 panic 屏补丁适配到当前内核，先拿到 panic 文本。
