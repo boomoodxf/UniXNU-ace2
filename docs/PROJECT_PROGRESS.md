@@ -120,3 +120,19 @@ FREE F8000000 + 312A000
   - subsystem 3：各类 lock 初始化、`compact_id_table_init`、`smr_cpu_init`、`workload_config_setup`
 - 下一步不再盲测函数入口，优先做 **panic 屏**或 startup entry 级二分：把某个 entry 的 `func` 指针指向复位 cave，按排序后的 index 二分。需要先复现 qsort 的排序结果（同一 subsystem/rank 均为 0，顺序由 qsort 决定）。
 - 另一条更快的路：直接对照 Udon 的 startup 补丁/内核配置，或把它的 panic 屏补丁适配到当前内核，先拿到 panic 文本。
+
+## 2026-10-26 Panic 屏尝试与结论
+
+- 已用上游 `patch-xnu-entry-probe.py` 的 panic 渲染源码，手工把 `_panic` 和 `_panic_trap_to_debugger` 重定向到 framebuffer panic 屏，并保留 nofb 修复，构建 `boot-panicscreen-1g.img`。
+- 上机后仍然只有 start.s 的早期彩条，没有 panic 文本。
+- 原因不是 panic 屏代码没跑，而是 **post-MMU 的 framebuffer V=P 映射缺失**：
+  - panic 屏写 `vinfo.v_baseaddr` / `0xb8xxxxxx` 时会 data abort；
+  - 这正是橙色/白色条 store 失败的同一个根因；
+  - 在 `vinfo` 尚未建立、FB 又未映射的阶段，panic 屏无法工作。
+- 因此当前诊断路线必须先把 **FB 的 V=P 映射**补上（在 `LiqinFill` 里为 `0xb8xxxxxx` 创建/填充 L2 表，或改用其它已映射的输出），否则无法用屏幕读取早期 panic/stage。
+
+### 下一步建议
+
+1. 修 `start.s` 的 `LiqinFill`：当 FB 范围的 L1 项为空时，分配/使用一个静态 L2 页并填入 0x601 block，确保 post-MMU 的 `0xb8xxxxxx` 可写；这同时修复橙色/白色条和 panic 屏。
+2. 或者直接让 post-MMU 阶段不再访问 framebuffer，改用 PSCI 复位探针继续 startup entry 二分。
+3. startup entry 已缩到 849 个/27 个函数；在 FB 修复后可用色带/panic 屏继续，否则继续用复位探针。
