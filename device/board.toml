@@ -1,0 +1,236 @@
+# Board description of the Xiaomi Pad 6 Pro (liuqin, SM8475), read by the unixnu build driver.
+#
+# PORTED FROM UniXNU-sheng. Every value that is board dependent is marked TODO(liuqin) and
+# carries the command or file that produces it. Do not remove a TODO without the evidence.
+
+[board]
+name = "liuqin"
+soc = "SM8475"
+description = "Xiaomi Pad 6 Pro"
+kit = "liuqin"                      # the package/ of this repository appears as kits/sheng in the build tree
+
+# The target OS image: the unchanged iPad7,1 iPadOS 17.7.11 restore image. Give --ipsw PATH to use a local file; without
+# it the remote url is read with range requests, only the members that are needed.
+[ipsw]
+url = "https://updates.cdn-apple.com/2025SpringFCS/fullrestores/122-77166/DCA6CFE8-90E9-4B92-880D-3DE171798E40/iPad_Pro_HFR_17.7.11_21H461_Restore.ipsw"
+product = "iPad7,1"
+version = "17.7.11"
+build = "21H461"
+device_class = "j120ap"
+chip_id = 0x8011
+board_id = 12
+fetch = ["KernelCache", "DeviceTree", "StaticTrustCache", "Cryptex1,SystemTrustCache"]   # the small components
+
+[ipsw.sha256]
+"044-76040-038.dmg" = "3f99b859c9728379110b66657c7b15285bcb1925ad8b5726542e2cdcf8b1028d"
+"044-76034-038.dmg" = "b4908cde41d23e6bc05e6af51a2c9eeb00cf0f863a6a18b1600c96a3fd70414f"
+
+# The raw image for the userdata partition: the OS and SystemOS disk images of the IPSW behind a manifest.
+# first_lba and last_lba are the GPT entry "userdata" of LUN 0, read from the tablet.
+[userdata]
+# 实测值，来自这台平板的 GPT（E:\liuqin\resize-backup-20261009\sgdisk-p.txt 与
+# E:\liuqin-backup\gpt\sda-head.bin，2026-10 备份，4096 字节 LBA）。
+#   当前布局（userdata 被缩到 96 GiB，后面有 linux_root / linux_home）：
+#     userdata 2758144 (0x2A1600) .. 27924479 (0x1AA17FF) = 96.00 GiB
+#   若恢复 stock GPT，userdata 会回到 2758144 (0x2A1600) .. 249179130 (0xEDA2BFA) = 940.02 GiB。
+# 两种布局起点相同，只有结尾不同；按刷写时实际存在的分区填。
+first_lba = 0x2A1600
+last_lba = 0x1AA17FF
+lba_bytes = 4096
+windows = [
+  { name = "OS", component = "OS" },
+  { name = "SystemOS", component = "Cryptex1,SystemOS" },
+]
+
+[kernel]
+defconfig = "liuqin_defconfig"
+# Archive builders of the kernel step, in order: unixnu runs them between the
+# bootstrap pass and the real link. Trimmed to what liuqin_boot_defconfig enables:
+# source corecrypto (prelink closure), the Apple-format device-tree platform expert
+# and the architectural CPU/interrupt provider. build-arm-driver.py is this
+# repository's copy; the base tree does not carry it.
+archives = [
+  "build-corecrypto-14.py",
+  "build-corecrypto-14.py --namespace",
+  "build-arm-driver.py ArmDTPlatform",
+  "build-arm-driver.py ArmCpu",
+  "build-libpthread-kernel.py",
+]
+
+[kernel.prelink]
+tool = "kits/NativePrelink/emit_prelink.py"
+kernel = "build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837.unstripped.noctf"
+kernelcache_sha256 = "f18b4df865405f2a287b84977d7aca745e056d656d9fc9df1662970ce2969de7"
+slide = "-0x1000000"
+early_security_init = "com.apple.driver.AppleMobileFileIntegrity=0xfffffff005ab4ae0"
+roots = [
+  "com.apple.AppleFSCompression.AppleFSCompressionTypeZlib",
+  "com.apple.driver.AppleARMPlatform",
+  "com.apple.driver.AppleARMWatchdogTimer",
+  "com.apple.driver.AppleAudioClockLibs",
+  "com.apple.driver.AppleEffaceableStorage",
+  "com.apple.driver.AppleIISController",
+  "com.apple.driver.AppleM2ScalerCSCDriver",
+  "com.apple.driver.AppleMobileFileIntegrity",
+  "com.apple.driver.ApplePMGR",
+  "com.apple.driver.IODARTFamily",
+  "com.apple.filesystems.apfs",
+  "com.apple.iokit.CoreAnalyticsFamily",
+  "com.apple.iokit.IOAVFamily",
+  "com.apple.iokit.IOAudio2Family",
+  "com.apple.iokit.IOCECFamily",
+  "com.apple.iokit.IOCryptoAcceleratorFamily",
+  "com.apple.iokit.IOGPUFamily",
+  "com.apple.iokit.IOHDCPFamily",
+  "com.apple.iokit.IOMobileGraphicsFamily",
+  "com.apple.iokit.IOReportFamily",
+  "com.apple.iokit.IOSlowAdaptiveClockingFamily",
+  "com.apple.iokit.IOStorageFamily",
+  "com.apple.iokit.IOSurface",
+  "com.apple.kec.Libm",
+  "com.apple.kec.corecrypto",
+  "com.apple.kext.AppleMatch",
+  "com.apple.kext.CoreTrust",
+  "com.apple.security.AppleImage4",
+  "com.apple.security.sandbox",
+  "com.apple.iokit.IOHIDFamily",
+  "com.apple.iokit.IOHIDEventDriver",
+]
+
+# liuqin 与 sheng 的 SoC 差异（写 uefi-liuqin 时必须按这些改）：
+#   - PMIC 家族是 pm8350/pm8350b/pm8350c/pm8450/pmk8350/pmr735a（SM8450/waipio 那一套），
+#     不是 sheng 的 SM8550 那套。Mu-Silicium 的 WaipioPkg 正好对应这个家族。
+#   - UFS PHY 在 0x1d80000（不是 SM8450 的 0x1d87000），qcom,ufs-phy-qmp-v4-cape，
+#     v6 寄存器窗口（COM 0 / PCS 0x400 / TX 0x1000 / RX 0x1200）。
+#   - 固件卷窗口已核实（stock uefi.elf 里的 uefiplat.cfg，OS3.0.7.0.VMYCNXM）：
+#       0xA7000000, 0x00400000, "UEFI FD"
+#       0xA7400000, 0x00200000, "UEFI FD Reserved"
+#     取 0xA7100000 / 0x400000（4 MiB），与 uefi-udon 同机型实测配置一致：落在 stock 4 MiB 窗口内，
+#     前 1 MiB 留策略余量。UEFI 退出后该区被内核 ramoops@0xa7000000 复用，不冲突。
+[firmware]
+config = "ace2"                     # Resources/Configs/ace2.toml in the uefi-ace2 checkout (--uefi)
+dsc = "Platforms/OnePlus/ace2Pkg/ace2.dsc"
+fd = "Build/ace2Pkg/{target}_CLANGPDB/FV/SILICIUM_UEFI.fd"
+preflight = []                      # uefi-ace2 has no liuqin-specific preflight; the UEFI build was validated on the host
+# 本机已经把这几个子模块按 pinned commit 展开成普通目录（GitHub 走代理用 tarball 下的），
+# 所以构建时不再让驱动去 git submodule update（它会因为目录已存在而报错）。
+# 换机器/重新 clone 时把下面这行的注释去掉。
+# submodules = ["Common/Mu", "Common/Mu_OEM_Sample", "Silicium-ACPI", "Silicon/Silicium/OpensslPkg/Library/OpensslLib/openssl"]
+patches = ["Resources/MuPatches/Gic-Spurious.patch"]
+packages = [
+  "{uefi}",
+  "{uefi}/Platforms/OnePlus",
+  "{uefi}/Platforms/Nothing",
+  "{tree}/package",
+  "{tree}/drivers/DarwinBoot",
+  "{edk2}",
+  "{uefi}/Common/Mu",
+  "{uefi}/Common/Mu_OEM_Sample",
+  "{uefi}/Silicon/Qualcomm",
+  "{uefi}/Silicon/Silicium",
+  "{uefi}/Silicium-ACPI",
+  "{uefi}/Silicium-ACPI/Platforms/OnePlus",
+  "{uefi}/Silicium-ACPI/Platforms/Nothing",
+  "{uefi}/Silicium-ACPI/Silicon/Qualcomm",
+]
+
+[firmware.defines]
+ENABLE_SECUREBOOT = "0"
+DEVICE_MODEL = "0"
+MEMORY_PROTECTION = "TRUE"
+SHIP_MODE = "FALSE"
+BUILDID_STRING = "ace2-research"
+
+# The ramdisk of the boot image: a FAT volume with the UniXNU config, the kernel, its device tree and
+# the optional trust cache and Data seed. The loader (DarwinBoot) is part of the firmware volume.
+[payload]
+volume = "LIQUNESP"
+size_mib = 64                          # 只有 kernel + adt + toml，sheng 的 192 是给 Data seed 留的
+loader = "firmware"
+timeout = 15                        # 菜单停留 5 分钟，bring-up 时方便观察/拍照（sheng 默认 3 秒）
+title = "ace2 (PHK110) first boot: source 4K XNU to console"
+ui_scale = 2                         # 取消自动 scale（Height/540=5 → 只有 45 列，48 字符的行会被切在屏幕右边）；4 → 56 列 x 45 行
+dram_size = "0xC0000000"             # Udon (same PHK110): 3 GiB ADT dram window; the managed memory is the DarwinBoot window below
+skip_setup_tool = "scripts/seed-data-skip-setup.py"   # TODO(liuqin): 从 sheng 复制并确认 Data 卷 UUID   # used by --skip-setup
+panic_screen = false                 # stub kernel has no Mach-O body, the patch script cannot run
+# The original static/System trust caches, and the owner trust bundle built around them.
+trust_cache_sha256 = [
+  "7416ca4f8377146626bb284e2133c76bee6cb4e3ee0af5d648b186235a7323a7",
+  "8900d6a93d7a59ce1a872a5c081e559f4240a218f97e12d44d22dda46644d68f",
+]
+kernel_args = [
+  "-v",
+  # liuqin bring-up: UEFI GOP framebuffer for the in-kernel text console
+  # (base,width,height,stride -- must match the splash geometry above)
+  "fb=0xb8000000,1240,2772,4960",
+  "debug=0x14e",
+  # print every STARTUP() entry (subsystem, rank, function) before it runs, so
+  # the last line on the panel is the function the boot hangs in
+  "startup_debug=1",
+  # 内核 USB CDC-ACM 调试口（opt-in）：VID:PID 1209:0002，伪序列号 LIQDBG001，
+  # Windows 认成 COM，只读命令 help/status/ping/replay。见 docs/liuqin-usb-debug.md
+  # "liuqin_usb=1",   # 先关掉：USB 调试口初始化会挡住启动，等系统起来再开
+  "kt_fixed_zones=120",
+  "offline-legacy-register=1",
+  "offline-legacy-gop=1",
+  "offline-legacy-unit-scale=2",
+  "offline-legacy-pm=1",
+  "offline-legacy-validate=1",
+  "offline-legacy-transfer=1",
+  "offline-legacy-cpu-present=1",
+  "offline-hid-home=1",
+  "offline-hid-input=1",
+  "offline-legacy-phase=4",
+  "offline-mobile-graphics-client=1",
+  "offline-mobile-graphics-load=1",
+  "offline-apfs-load=1",
+  "boot-progress=2",
+  "-apfs_shared_datavolume",
+  "offline-key-events=1",
+  # "native-ufs-root=1",   # stub 内核没有 _sheng_pmgr_run 符号，先关掉这项 AMFI 预检
+  "native-ufs-stats-delay=30",
+  "sheng-pmgr=2",            # TODO(liuqin): 复用 sheng 的 PMGR 探测，需在 SM8475 上验证或改名
+  "armcpu-diagnostics=1",
+  "sheng-disable-watchdogd=1",   # TODO(liuqin)
+  "sheng-disable-jobs=com.apple.identityservicesd,com.apple.locationd,com.apple.CommCenter,com.apple.iconservices.iconservicesagent",
+  "boot-ui-focus=PreBoard",
+  "boot-ui-focus2=SpringBoard",
+  "boot-ui-focus3=backboardd",
+  "boot-ui-focus4=Setup",
+  "sheng-smp=1",            # TODO(liuqin): sheng* 参数是 A740/SM8550 专有，liuqin 需按 A730/SM8475 复核
+  "sheng-cpufreq=3",
+  "sheng-touch=4",
+  "sheng-aks=1",
+  "sheng-gpu-power=9",
+  "boot-diag-resume=0",
+  "sheng-gpu-metal=1",      # TODO(liuqin): Adreno 730 而非 740
+  "sheng-gpu-addon=1",
+  "armcpu-spi-ipi=1",
+  "-no_slto_panic",
+  "ml-timeout-lock-panic-scale=40",
+  "sheng-touch-hid=1",      # TODO(liuqin): 触控 IC 是 Novatek NT36532
+]
+
+[payload.adt]
+tool = "scripts/make-liuqin-adt.py"   # TODO(liuqin): 未创建，见 docs/porting-plan.md 阶段 3
+chip_id = "207"              # TODO(liuqin): SM8475 的 SMEM 芯片号，不是 SM8550 的 207
+owned_memory_size = "0x130000000"  # Udon (same PHK110): 4.75 GiB contiguous DarwinBoot window observed working on hardware
+root_match_volume_uuid = "04769D26-2CA0-4825-B443-E2E5F88300F2"  # 来自同一 IPSW 的 OS 卷，同 IPSW 时不变
+cpu_regs = "0,0x100,0x200,0x300,0x400,0x500,0x600,0x700"
+packed_data_ramdisk = true
+ipad_identity = true
+unique_chip_id = "required"          # the platform seed is not stored in any repository
+
+# Image parameters come from the Mu-Silicium device config; [bootimg.image] would override them.
+
+# The stock ABL powers the panel off when the device tree has no splash region, so add it.
+# liuqin 已核实：ABL 连续 splash framebuffer 在 0xb8000000，长度 0x2b00000（45 MiB），
+# 1800x2880 a8r8g8b8，stride = 1800*4。与 sheng 的数值恰好相同，所以这一段不用改。
+# 证据：liuqin-nixos/pkgs/u-boot/files/dts/.../sm8450-xiaomi-liuqin.dts 的
+# chosen/framebuffer@b8000000 与 reserved-memory/splash_region@b8000000。
+[[bootimg.dtb_node]]
+path = "/reserved-memory/splash_region"
+props = [
+  { name = "label", type = "s", value = "cont_splash_region" },
+  { name = "reg", type = "x", value = ["0x0", "0xb8000000", "0x0", "0x2b00000"] },
+]

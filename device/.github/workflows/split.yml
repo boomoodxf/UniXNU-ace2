@@ -1,0 +1,41 @@
+name: split
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: file in ci-out to split
+        default: kernel/kernel.macho
+      chunk:
+        description: bytes per part
+        default: "4000000"
+      gzip:
+        description: compress before splitting
+        type: boolean
+        default: true
+permissions:
+  contents: write
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ci-out
+      - name: Split
+        run: |
+          rm -f kernel/part-* kernel/gzpart-* || true
+          if [ "${{ inputs.gzip }}" = "true" ]; then
+            gzip -9 -c "${{ inputs.source }}" > kernel/debug.bin.gz
+            split -b "${{ inputs.chunk }}" -d -a 2 kernel/debug.bin.gz kernel/gzpart-
+            rm -f kernel/debug.bin.gz
+          else
+            split -b "${{ inputs.chunk }}" -d -a 2 "${{ inputs.source }}" kernel/part-
+          fi
+          ls -l kernel | head -30
+      - name: Publish
+        run: |
+          git config user.email ci@local
+          git config user.name ci
+          git add -A kernel
+          git commit -qm "parts of ${{ inputs.source }}"
+          git push -f origin HEAD:ci-parts

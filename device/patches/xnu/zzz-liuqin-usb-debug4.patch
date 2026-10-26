@@ -1,0 +1,19 @@
+diff --git a/bsd/kern/kern_time.c b/bsd/kern/kern_time.c
+--- a/bsd/kern/kern_time.c
++++ b/bsd/kern/kern_time.c
+@@ -244,6 +244,7 @@
+ 	__unused time_t base)
+ {
+ 	struct timeval  tv;
++	extern void liuqin_milestone(const char *, const char *);
+ 
+ 	/*
+ 	 * Assertion:
+@@ -254,6 +255,7 @@
+ 	 * is gotten from the calendar.
+ 	 */
+ 	microtime(&tv);
++	liuqin_milestone("B", "inittodr_microtime_done");
+ 
+ 	if (tv.tv_sec < 0 || tv.tv_usec < 0) {
+ 		printf("WARNING: preposterous time in Real Time Clock");

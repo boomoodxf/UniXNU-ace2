@@ -1,0 +1,63 @@
+diff --git a/config/IOKit.exports b/config/IOKit.exports
+--- a/config/IOKit.exports
++++ b/config/IOKit.exports
+@@ -16,4 +16,5 @@
+ _IOExitThread
+ _IOFindBSDRoot
++_liuqin_milestone
+ _IOFindNameForValue
+ _IOFindValueForName
+diff --git a/iokit/bsddev/IOKitBSDInit.cpp b/iokit/bsddev/IOKitBSDInit.cpp
+--- a/iokit/bsddev/IOKitBSDInit.cpp
++++ b/iokit/bsddev/IOKitBSDInit.cpp
+@@ -668,6 +668,7 @@
+ IOFindBSDRoot( char * rootName, unsigned int rootNameSize,
+     dev_t * root, u_int32_t * oflags )
+ {
++	extern "C" void liuqin_milestone(const char *, const char *);
+ 	mach_timespec_t     t;
+ 	IOService *         service;
+ 	IORegistryEntry *   regEntry;
+@@ -691,19 +692,19 @@
+ 
+ 	int xchar, dchar;
+ 
+-	// stall here for anyone matching on the IOBSD resource to finish (filesystems)
+ 	matching = IOService::serviceMatching(gIOResourcesKey);
+ 	assert(matching);
+ 	matching->setObject(gIOResourceMatchedKey, gIOBSDKey);
+ 
+-	if ((service = IOService::waitForMatchingService(matching, 30ULL * kSecondScale))) {
+-		OSSafeReleaseNULL(service);
+-	} else {
+-		IOLog("!BSD\n");
+-	}
++	/* liuqin: the blocking IOBSD-resource wait never returns on this platform
++	 * (IOKit republish notifications are not delivered this early, and the 30 s
++	 * timeout itself needs that machinery). Skip it outright. */
++	service = NULL;
++	liuqin_milestone("B", "iobsd_skip");
+ 	matching->release();
+ 	matching = NULL;
+ 
++		liuqin_milestone("B", "at_mountattempts");
+ 	if (mountAttempts++) {
+ 		IOLog("mount(%d) failed\n", mountAttempts);
+ 		IOSleep( 5 * 1000 );
+@@ -715,13 +716,16 @@
+ 	}
+ 	rdBootVar = str.data() + kMaxPathBuf;
+ 
++		liuqin_milestone("B", "at_parse_rd");
+ 	if (!PE_parse_boot_argn("rd", rdBootVar, kMaxBootVar )
+ 	    && !PE_parse_boot_argn("rootdev", rdBootVar, kMaxBootVar )) {
+ 		rdBootVar[0] = 0;
+ 	}
+ 
++		liuqin_milestone("B", "at_from_chosen");
+ 	if ((regEntry = IORegistryEntry::fromPath( "/chosen", gIODTPlane ))) {
+ 		do {
++			liuqin_milestone("B", "at_di_ramfile");
+ 			di_root_ramfile(regEntry);
+ 			OSObject* unserializedContainer = NULL;
+ 			data = OSDynamicCast(OSData, regEntry->getProperty( "root-matching" ));

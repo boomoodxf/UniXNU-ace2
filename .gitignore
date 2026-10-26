@@ -1,0 +1,12 @@
+.DS_Store
+__pycache__/
+*.pyc
+out/
+Build/
+build/
+*.img
+*.macho
+*.adt
+*.fd
+*.ramdisk
+*.log

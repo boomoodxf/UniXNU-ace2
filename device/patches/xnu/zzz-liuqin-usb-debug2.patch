@@ -1,0 +1,91 @@
+diff --git a/bsd/dev/unix_startup.c b/bsd/dev/unix_startup.c
+--- a/bsd/dev/unix_startup.c
++++ b/bsd/dev/unix_startup.c
+@@ -231,12 +231,15 @@
+ void
+ bsd_bufferinit(void)
+ {
++	extern void liuqin_milestone(const char *, const char *);
+ 	/*
+ 	 * Note: Console device initialized in kminit() from bsd_autoconf()
+ 	 * prior to call to us in bsd_init().
+ 	 */
+ 
++	liuqin_milestone("B", "at_bsdstartup");
+ 	bsd_startupearly();
++	liuqin_milestone("B", "bsdstartup_done");
+ 
+ #if CONFIG_MBUF_MCACHE
+ 	mb_map = kmem_suballoc(kernel_map,
+@@ -247,11 +250,13 @@
+ 	    KMS_PERMANENT | KMS_NOFAIL,
+ 	    VM_KERN_MEMORY_MBUF).kmr_submap;
+ 	mbutl = (unsigned char *)mb_range.min_address;
++	liuqin_milestone("B", "mbuf_map_done");
+ #endif /* CONFIG_MBUF_MCACHE */
+ 
+ 	/*
+ 	 * Set up buffers, so they can be used to read disk labels.
+ 	 */
++	liuqin_milestone("B", "at_bufinit");
+ 	bufinit();
+ }
+ 
+diff --git a/bsd/vfs/vfs_bio.c b/bsd/vfs/vfs_bio.c
+--- a/bsd/vfs/vfs_bio.c
++++ b/bsd/vfs/vfs_bio.c
+@@ -2174,6 +2174,7 @@
+ __private_extern__ void
+ bufinit(void)
+ {
++	extern void liuqin_milestone(const char *, const char *);
+ 	buf_t   bp;
+ 	struct bqueues *dp;
+ 	int     i;
+@@ -2183,11 +2184,14 @@
+ 	for (dp = bufqueues; dp < &bufqueues[BQUEUES]; dp++) {
+ 		TAILQ_INIT(dp);
+ 	}
++	liuqin_milestone("B", "at_hashinit");
+ 	bufhashtbl = hashinit(nbuf_hashelements, M_CACHE, &bufhash);
++	liuqin_milestone("B", "hashinit_done");
+ 
+ 	buf_busycount = 0;
+ 
+ 	/* Initialize the buffer headers */
++	liuqin_milestone("B", "at_bufhdr_loop");
+ 	for (i = 0; i < max_nbuf_headers; i++) {
+ 		nbuf_headers++;
+ 		bp = &buf_headers[i];
+@@ -2201,6 +2205,7 @@
+ 		binshash(bp, &invalhash);
+ 	}
+ 	boot_nbuf_headers = nbuf_headers;
++	liuqin_milestone("B", "bufhdr_loop_done");
+ 
+ 	TAILQ_INIT(&iobufqueue);
+ 	TAILQ_INIT(&delaybufqueue);
+@@ -2215,17 +2220,23 @@
+ 	/*
+ 	 * allocate and initialize cluster specific global locks...
+ 	 */
++	liuqin_milestone("B", "at_cluster");
+ 	cluster_init();
++	liuqin_milestone("B", "cluster_done");
+ 
+ 	printf("using %d buffer headers and %d cluster IO buffer headers\n",
+ 	    nbuf_headers, niobuf_headers);
+ 
+ 	/* start the bcleanbuf() thread */
++	liuqin_milestone("B", "at_bclean_thread");
+ 	bcleanbuf_thread_init();
++	liuqin_milestone("B", "bclean_thread_done");
+ 
+ 	/* Register a callout for relieving vm pressure */
++	liuqin_milestone("B", "at_callout");
+ 	if (vm_set_buffer_cleanup_callout(buffer_cache_gc) != KERN_SUCCESS) {
+ 		panic("Couldn't register buffer cache callout for vm pressure!");
+ 	}
++	liuqin_milestone("B", "callout_done");
+ }
+ 
