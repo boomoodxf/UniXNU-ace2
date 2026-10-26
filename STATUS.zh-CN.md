@@ -26,14 +26,15 @@ sha256  8f7dd50414ada439ce88dc630cd2b9df1d0d3a26ab9a173e50581acd1280d455
 
 ## 还没完成
 
-- XNU 进入 entry 之后的可见 console / stage 标记：尚未确认停在 stage 12 还是更远。
+- 当前死点已定位到 `kernel_startup_bootstrap()` 内部，早于 `arm_vm_init`（不是 stage 12）。
+- XNU 进入 entry 之后的可见 console / stage 标记仍待打通。
 - UFS root、launchd、iPadOS 用户态。
 - 触控、显示驱动、GPU、Wi-Fi、音频、电源管理等。
 
 ## 下次第一步
 
-用官方 `scripts/patch-xnu-entry-probe.py`（当前 UniXNU main 已提供）加
-`entry_probe_reset_delay`，判断 MMU 是否打开；或重新启用内核阶段色带。
+在 `kernel_startup_bootstrap()` 内部做 startup 函数级 PSCI 复位探针，
+定位具体子系统；同时保留 nofb 修复（跳过 post-MMU 橙色/白色条 store）。
 
 ## 复刻
 
